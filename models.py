@@ -1,27 +1,33 @@
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
-from sqlalchemy.orm import relationship
 from datetime import datetime
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL")
+from sqlalchemy import (
+    Column,
+    Integer,
+    BigInteger,
+    String,
+    Float,
+    DateTime,
+    ForeignKey,
+    Boolean,
+    Text,
+)
+from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 
 Base = declarative_base()
 
-# ==================
-# User & Profiles
-# ==================
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    username = Column(String, unique=True, nullable=False)
-    telegram_id = Column(String, unique=True, nullable=False)
-    role = Column(String, nullable=False)  # 'admin', 'client', 'model'
-    status = Column(String, default="inactive")  # 'inactive', 'active', 'suspended', 'banned'
+    telegram_id = Column(BigInteger, unique=True, nullable=False)
+    username = Column(String)
+    first_name = Column(String)
+    last_name = Column(String)
+    email = Column(String)
+    role = Column(String, nullable=False)
+    status = Column(String, default="inactive")
+    wallet_balance = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     model_profile = relationship("ModelProfile", back_populates="user", uselist=False)
@@ -32,11 +38,15 @@ class ModelProfile(Base):
     __tablename__ = "model_profiles"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    verification_status = Column(String, default="pending")  # 'pending', 'approved', 'rejected'
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    display_name = Column(String)
+    verification_status = Column(String, default="pending")
     approved_at = Column(DateTime)
-    verification_photos = Column(Text)  # JSON list of photo URLs
+    approved_by = Column(Integer)
+    verification_photos = Column(ARRAY(Text))
     verification_video_file_id = Column(String)
+    total_earnings = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="model_profile")
 
@@ -45,50 +55,77 @@ class ClientProfile(Base):
     __tablename__ = "client_profiles"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     total_spent = Column(Float, default=0.0)
 
     user = relationship("User", back_populates="client_profile")
 
 
-# ==================
-# Sessions & Transactions
-# ==================
 class Session(Base):
     __tablename__ = "sessions"
 
     id = Column(Integer, primary_key=True)
     session_ref = Column(String, unique=True, nullable=False)
-    client_id = Column(Integer, ForeignKey("users.id"))
-    model_id = Column(Integer, ForeignKey("users.id"))
+    client_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    model_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     session_type = Column(String)
-    status = Column(String, default="pending")  # 'pending', 'active', 'completed', 'disputed'
     package_price = Column(Float)
+    status = Column(String, default="pending")
     actual_start = Column(DateTime)
     scheduled_end = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DigitalContent(Base):
+    __tablename__ = "digital_content"
+
+    id = Column(Integer, primary_key=True)
+    model_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content_type = Column(String)
+    title = Column(String)
+    description = Column(Text)
+    price = Column(Float)
+    telegram_file_id = Column(String)
+    preview_file_id = Column(String)
+    is_active = Column(Boolean, default=True)
+    total_sales = Column(Integer, default=0)
+    total_revenue = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ContentPurchase(Base):
+    __tablename__ = "content_purchases"
+
+    id = Column(Integer, primary_key=True)
+    content_id = Column(Integer, ForeignKey("digital_content.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    transaction_id = Column(Integer)
+    price_paid = Column(Float)
+    purchased_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True)
-    transaction_ref = Column(String, unique=True, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    transaction_ref = Column(String, unique=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    transaction_type = Column(String)
     amount = Column(Float)
-    transaction_type = Column(String)  # 'platform_fee', 'booking_payment', etc.
-    status = Column(String, default="pending")  # 'pending', 'completed', 'failed'
-    created_at = Column(DateTime, default=datetime.utcnow)
+    payment_provider = Column(String)
+    status = Column(String)
+    metadata_json = Column(JSONB)
     completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class EscrowAccount(Base):
     __tablename__ = "escrow_accounts"
 
     id = Column(Integer, primary_key=True)
-    session_id = Column(Integer, ForeignKey("sessions.id"))
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     amount = Column(Float)
-    status = Column(String, default="held")  # 'held', 'released', 'disputed'
+    status = Column(String, default="held")
     dispute_reason = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -97,11 +134,10 @@ class AdminAction(Base):
     __tablename__ = "admin_actions"
 
     id = Column(Integer, primary_key=True)
-    admin_id = Column(Integer, ForeignKey("users.id"))
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     action_type = Column(String)
     target_user_id = Column(Integer, ForeignKey("users.id"))
     target_type = Column(String)
     target_id = Column(Integer)
-    details = Column(Text)
+    details = Column(JSONB)
     created_at = Column(DateTime, default=datetime.utcnow)
-

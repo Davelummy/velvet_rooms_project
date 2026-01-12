@@ -1,19 +1,8 @@
-import os
 import asyncio
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import text  # <-- import this
-from dotenv import load_dotenv
-
-load_dotenv()
-
-DATABASE_URL = os.getenv("DATABASE_URL")
+from sqlalchemy import text
+from db import engine
 
 async def test_connection():
-    if not DATABASE_URL:
-        print("❌ DATABASE_URL not found in .env")
-        return
-
-    engine = create_async_engine(DATABASE_URL, echo=True)
     try:
         async with engine.connect() as conn:
             result = await conn.execute(text("SELECT NOW()"))
@@ -25,4 +14,3 @@ async def test_connection():
         await engine.dispose()
 
 asyncio.run(test_connection())
-

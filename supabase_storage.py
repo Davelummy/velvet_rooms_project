@@ -1,23 +1,20 @@
-import os
+from typing import Optional
+
 from supabase import create_client, Client
-from dotenv import load_dotenv
+from config import settings
 
-# Load environment variables
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+if not settings.supabase_url or not settings.supabase_service_key:
     raise RuntimeError("SUPABASE_URL or SUPABASE_SERVICE_KEY missing from .env")
 
-if not SUPABASE_URL.endswith("/"):
-    SUPABASE_URL += "/"
+supabase_url = settings.supabase_url
+if not supabase_url.endswith("/"):
+    supabase_url += "/"
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+supabase: Client = create_client(supabase_url, settings.supabase_service_key)
 
-def upload_file(local_path: str, bucket: str, remote_path: str):
+def upload_file(local_path: str, bucket: Optional[str], remote_path: str):
     """Upload a file to Supabase Storage, overwriting if it already exists."""
+    bucket = bucket or settings.supabase_bucket
     # Delete first if exists
     try:
         supabase.storage.from_(bucket).remove([remote_path])
@@ -28,7 +25,7 @@ def upload_file(local_path: str, bucket: str, remote_path: str):
         res = supabase.storage.from_(bucket).upload(remote_path, f)
     return res
 
-def get_public_url(bucket: str, remote_path: str) -> str:
+def get_public_url(bucket: Optional[str], remote_path: str) -> str:
     """Return the public URL of a file in Supabase storage."""
+    bucket = bucket or settings.supabase_bucket
     return supabase.storage.from_(bucket).get_public_url(remote_path)
-
